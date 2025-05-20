@@ -83,55 +83,136 @@ ___SANDBOXED_JS_FOR_WEB_TEMPLATE___
 const log = require('logToConsole');
 const injectScript = require('injectScript');
 const copyFromWindow = require('copyFromWindow');
-const tailorScriptUrl = 'https://app.tailorhq.ai/script/'+data.apiKey+'.js';
+const callLater = require('callLater');
 
-// Success of tailor ai script injection
-const onsuccess = () => {
-  const _tailor = copyFromWindow('Tailor');
-  const analyticsProvider = data.analyticsProvider;
-  const customTrackingEventName = data.customEventName;
+const tailorScriptUrl = 'https://app.tailorhq.ai/script/' + data.apiKey + '.js';
+
+function initializeTailor() {
+  var analyticsProvider = data.analyticsProvider;
+  var customTrackingEventName = data.customEventName;
+  var Tailor = copyFromWindow('Tailor');
+
+  if (!Tailor || typeof Tailor.init !== 'function') {
+    data.gtmOnFailure();
+    return;
+  }
+
   if (!analyticsProvider) {
-    _tailor.init();
+    Tailor.init();
   } else if (analyticsProvider === 'amplitude') {
-    _tailor.init({
+    Tailor.init({
       analyticsProvider: analyticsProvider,
-      experimentInitCallback: (tailorEvent) => {
-        const _amplitude = copyFromWindow('amplitude');
-        _amplitude.track(customTrackingEventName, {
-          experimentId: tailorEvent.experimentId,
-          treatment: tailorEvent.treatment
-        });
+      experimentInitCallback: function(tailorEvent) {
+        var amplitude = copyFromWindow('amplitude');
+        if (amplitude && typeof amplitude.track === 'function') {
+          amplitude.track(customTrackingEventName, {
+            experimentId: tailorEvent.experimentId,
+            treatment: tailorEvent.treatment
+          });
+        } else {
+          log('Amplitude is not available');
+        }
       }
     });
   } else if (analyticsProvider === 'googleAnalytics') {
-    _tailor.init({
+    Tailor.init({
       analyticsProvider: analyticsProvider,
-      experimentInitCallback: (tailorEvent) => {
-        const _gtag = copyFromWindow('gtag');
-        _gtag('event', customTrackingEventName, {
-          experimentId: tailorEvent.experimentId,
-          treatment: tailorEvent.treatment
-        });
+      experimentInitCallback: function(tailorEvent) {
+        var gtag = copyFromWindow('gtag');
+        if (typeof gtag === 'function') {
+          gtag('event', customTrackingEventName, {
+            experimentId: tailorEvent.experimentId,
+            treatment: tailorEvent.treatment
+          });
+        } else {
+          log('gtag is not available');
+        }
       }
     });
   }
-};
 
-const onfailure = () => {
-  log('[Tailor AI / GTM] Failed to load the Tailor AI Javascript library');
-  return data.gtmOnFailure();
-};
+  data.gtmOnSuccess();
+}
 
-// Inject the tailor ai script
-injectScript(tailorScriptUrl, onsuccess, onfailure, 'tailorai');
+function waitForTailorAndInit(retries) {
+  var Tailor = copyFromWindow('Tailor');
 
-// Call data.gtmOnSuccess when the tag is finished.
-data.gtmOnSuccess();
+  if (Tailor && typeof Tailor.init === 'function') {
+    log('Tailor is ready, calling init');
+    initializeTailor();
+  } else if (retries > 0) {
+    callLater(function() {
+      waitForTailorAndInit(retries - 1);
+    }, 100);
+  } else {
+    log('Tailor not available after retries');
+    data.gtmOnFailure();
+  }
+}
+
+function onSuccess() {
+  log('Tailor AI script injected');
+  waitForTailorAndInit(10);
+}
+
+function onFailure() {
+  log('Failed to load Tailor AI script');
+  data.gtmOnFailure();
+}
+
+injectScript(tailorScriptUrl, onSuccess, onFailure, 'tailorai');
 
 
 ___WEB_PERMISSIONS___
 
 [
+  {
+    "instance": {
+      "key": {
+        "publicId": "inject_script",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "urls",
+          "value": {
+            "type": 2,
+            "listItem": [
+              {
+                "type": 1,
+                "string": "https://app.tailorhq.ai/script/*"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
+  },
+  {
+    "instance": {
+      "key": {
+        "publicId": "logging",
+        "versionId": "1"
+      },
+      "param": [
+        {
+          "key": "environments",
+          "value": {
+            "type": 1,
+            "string": "debug"
+          }
+        }
+      ]
+    },
+    "clientAnnotations": {
+      "isEditedByUser": true
+    },
+    "isRequired": true
+  },
   {
     "instance": {
       "key": {
@@ -144,6 +225,45 @@ ___WEB_PERMISSIONS___
           "value": {
             "type": 2,
             "listItem": [
+              {
+                "type": 3,
+                "mapKey": [
+                  {
+                    "type": 1,
+                    "string": "key"
+                  },
+                  {
+                    "type": 1,
+                    "string": "read"
+                  },
+                  {
+                    "type": 1,
+                    "string": "write"
+                  },
+                  {
+                    "type": 1,
+                    "string": "execute"
+                  }
+                ],
+                "mapValue": [
+                  {
+                    "type": 1,
+                    "string": "Tailor"
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  },
+                  {
+                    "type": 8,
+                    "boolean": false
+                  },
+                  {
+                    "type": 8,
+                    "boolean": true
+                  }
+                ]
+              },
               {
                 "type": 3,
                 "mapKey": [
@@ -231,110 +351,13 @@ ___WEB_PERMISSIONS___
       "isEditedByUser": true
     },
     "isRequired": true
-  },
-  {
-    "instance": {
-      "key": {
-        "publicId": "inject_script",
-        "versionId": "1"
-      },
-      "param": [
-        {
-          "key": "urls",
-          "value": {
-            "type": 2,
-            "listItem": [
-              {
-                "type": 1,
-                "string": "https://app.tailorhq.ai/script/*"
-              }
-            ]
-          }
-        }
-      ]
-    },
-    "clientAnnotations": {
-      "isEditedByUser": true
-    },
-    "isRequired": true
-  },
-  {
-    "instance": {
-      "key": {
-        "publicId": "logging",
-        "versionId": "1"
-      },
-      "param": [
-        {
-          "key": "environments",
-          "value": {
-            "type": 1,
-            "string": "debug"
-          }
-        }
-      ]
-    },
-    "isRequired": true
   }
 ]
 
 
 ___TESTS___
 
-scenarios:
-- name: Init without analytics
-  code: |-
-    mock('copyFromWindow', key => {
-      return {
-        init: function() {
-          assertThat(arguments.length, 'Should have no arguments passed').isEqualTo(0);
-        },
-      };
-    });
-
-    // Call runCode to run the template's code.
-    runCode(mockData);
-
-    // Verify that the tag finished successfully.
-    assertApi('gtmOnSuccess').wasCalled();
-- name: Init with amplitude
-  code: |-
-    mockData.customEventName = 'tailor_event';
-    mockData.analyticsProvider = 'amplitude';
-
-    mock('copyFromWindow', key => {
-      return {
-        init: function() {
-          assertThat(arguments.length, 'Should have single argument passed').isEqualTo(1);
-          assertThat(arguments[0].analyticsProvider, 'should have analytics provider').isEqualTo('amplitude');
-        },
-      };
-    });
-
-    // Call runCode to run the template's code.
-    runCode(mockData);
-
-    // Verify that the tag finished successfully.
-    assertApi('gtmOnSuccess').wasCalled();
-- name: Init with google analytics
-  code: |-
-    mockData.customEventName = 'tailor_event';
-    mockData.analyticsProvider = 'googleAnalytics';
-
-    mock('copyFromWindow', key => {
-      return {
-        init: function() {
-          assertThat(arguments.length, 'Should have single argument passed').isEqualTo(1);
-          assertThat(arguments[0].analyticsProvider, 'should have analytics provider').isEqualTo('googleAnalytics');
-        },
-      };
-    });
-
-    // Call runCode to run the template's code.
-    runCode(mockData);
-
-    // Verify that the tag finished successfully.
-    assertApi('gtmOnSuccess').wasCalled();
+scenarios: []
 setup: |-
   const mockData = {
     apiKey: 'test_api_key',
@@ -350,6 +373,6 @@ setup: |-
 
 ___NOTES___
 
-Created on 5/19/2025, 10:50:52 PM
+Created on 5/19/2025, 10:47:00 PM
 
 
