@@ -14,6 +14,7 @@ ___INFO___
   "version": 1,
   "securityGroups": [],
   "displayName": "Tailor AI",
+  "categories": ["PERSONALIZATION", "MARKETING"],
   "brand": {
     "id": "brand_dummy",
     "displayName": "",
