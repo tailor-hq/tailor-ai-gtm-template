@@ -1,5 +1,5 @@
 homepage: "https://www.tailorhq.ai"
 documentation: "https://www.tailorhq.ai/quick-start"
 versions:
-  - sha: 578866f712c791c3588c7e09c77e9c3a82de40cf
+  - sha: a431e05a58e8ceb1de1ead0093e7a10ad726a2ab
     changeNotes: Initial release.
